@@ -1,14 +1,14 @@
 provider "azurerm" {
-  version = "2.1.0"
+  ##version = "2.1.0"
   features {}
 
   # IMPORTANT!
   # For simplicity, we are not setting up "proper" access through environment variables
   # Insert your access credentials here
-  subscription_id = "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
-  tenant_id       = "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
-  client_secret   = "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
-  client_id       = "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+  subscription_id = ""
+  tenant_id       = ""
+  client_secret   = ""
+  client_id       = ""
 }
 
 # And not configuring a Terraform remote state
@@ -16,7 +16,7 @@ terraform {}
 
 resource "azurerm_resource_group" "resource_group" {
   name     = "resource_group"
-  location = "westeurope"
+  location = "southafricanorth"
 }
 
 resource "azurerm_virtual_network" "vnet" {
@@ -31,7 +31,7 @@ resource "azurerm_subnet" "subnet_1" {
   name                 = "subnet_1"
   resource_group_name  = azurerm_resource_group.resource_group.name
   virtual_network_name = azurerm_virtual_network.vnet.name
-  address_prefix       = "10.0.1.0/24"
+  address_prefixes     = ["10.0.1.0/24"]
 }
 
 resource "azurerm_public_ip" "public_ip_1" {
@@ -42,7 +42,8 @@ resource "azurerm_public_ip" "public_ip_1" {
   # Public IP needs to be dynamic for the Virtual Network Gateway
   # Keep in mind that the IP address will be "dynamically generated" after
   # being attached to the Virtual Network Gateway below
-  allocation_method = "Dynamic"
+  allocation_method = "Static"
+  sku = "Standard"
 }
 
 resource "azurerm_public_ip" "public_ip_2" {
@@ -51,7 +52,8 @@ resource "azurerm_public_ip" "public_ip_2" {
   resource_group_name = azurerm_resource_group.resource_group.name
 
   # Public IP needs to be dynamic for the Virtual Network Gateway
-  allocation_method = "Dynamic"
+  allocation_method = "Static"
+  sku = "Standard"
 }
 
 resource "azurerm_virtual_network_gateway" "virtual_network_gateway" {
@@ -65,7 +67,7 @@ resource "azurerm_virtual_network_gateway" "virtual_network_gateway" {
   # Configuration for high availability
   active_active = true
   # This might me expensive, check the prices  
-  sku           = "VpnGw1"
+  sku           = "VpnGw2"
 
   # Configuring the two previously created public IP Addresses
   ip_configuration {
@@ -90,7 +92,7 @@ resource "azurerm_subnet" "subnet_gateway" {
   name                 = "GatewaySubnet"
   resource_group_name  = azurerm_resource_group.resource_group.name
   virtual_network_name = azurerm_virtual_network.vnet.name
-  address_prefix       = "10.0.2.0/24"
+  address_prefixes       = ["10.0.2.0/24"]
 }
 
 # Tunnel from Azure to AWS vpn_connection_1 (tunnel1)
@@ -194,4 +196,53 @@ resource "azurerm_virtual_network_gateway_connection" "virtual_network_gateway_c
   local_network_gateway_id   = azurerm_local_network_gateway.local_network_gateway_2_tunnel2.id
 
   shared_key = aws_vpn_connection.vpn_connection_2.tunnel2_preshared_key
+}
+
+module "network-security-group" {
+  source                = "Azure/network-security-group/azurerm"
+  resource_group_name   = azurerm_resource_group.resource_group.name
+  security_group_name   = "nsg"
+  source_address_prefix = ["10.0.1.0/24"]
+  predefined_rules = [
+    {
+      name     = "SSH"
+      priority = "500"
+    },
+    {
+      name     = "HTTP"
+      priority = "501"
+    },
+  ] 
+
+  custom_rules = [
+    {
+      name                   = "myssh"
+      priority               = 201
+      direction              = "Inbound"
+      access                 = "Allow"
+      protocol               = "Tcp"
+      source_port_range      = "*"
+      destination_port_range = "22"
+      source_address_prefix  = "10.0.1.0/24"
+      description            = "description-myssh"
+    },
+    {
+      name                    = "myhttp"
+      priority                = 200
+      direction               = "Inbound"
+      access                  = "Allow"
+      protocol                = "Tcp"
+      source_port_range       = "*"
+      destination_port_range  = "80"
+      source_address_prefixes = ["10.0.1.0/24"]
+      description             = "description-http"
+    },
+  ]
+
+  tags = {
+    environment = "dev"
+    costcenter  = "it"
+  }
+
+  depends_on = [azurerm_resource_group.resource_group]
 }

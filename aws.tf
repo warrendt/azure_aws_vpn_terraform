@@ -1,11 +1,27 @@
 provider "aws" {
-  version    = "2.55.0"
+  ##version    = "2.55.0"
   # IMPORTANT!
   # Setup your correct region, access_key and secret_key
   # Again, we are not focusing on credentials best practices here
-  region     = "eu-west-1"
+  region     = "af-south-1"
   access_key = ""
   secret_key = ""
+}
+
+data "aws_ami" "ubuntu" {
+  most_recent = true
+
+  filter {
+    name   = "name"
+    values = ["ubuntu/images/hvm-ssd/ubuntu-focal-20.04-amd64-server-*"]
+  }
+
+  filter {
+    name   = "virtualization-type"
+    values = ["hvm"]
+  }
+
+  owners = ["099720109477"] # Canonical
 }
 
 resource "aws_vpc" "vpc" {
